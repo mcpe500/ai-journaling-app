@@ -8,8 +8,13 @@ import (
 
 func init() {
 	m.Register(func(app core.App) error {
-		// Get the users collection for relation
+		// Get the users and journal_entries collections for relations
 		users, err := app.FindCollectionByNameOrId("_pb_users_auth_")
+		if err != nil {
+			return err
+		}
+
+		entries, err := app.FindCollectionByNameOrId("journal_entries")
 		if err != nil {
 			return err
 		}
@@ -37,9 +42,9 @@ func init() {
 
 		// Analysis type (daily/weekly/monthly)
 		growthAnalysis.Fields.Add(&core.SelectField{
-			Name:     "analysis_type",
-			Values:   []string{"entry", "daily", "weekly", "monthly"},
-			Required: true,
+			Name:      "analysis_type",
+			Values:    []string{"entry", "daily", "weekly", "monthly"},
+			Required:  true,
 			MaxSelect: 1,
 		})
 
@@ -73,8 +78,8 @@ func init() {
 
 		// Emotional trend (improving/stable/declining)
 		growthAnalysis.Fields.Add(&core.SelectField{
-			Name:   "emotional_trend",
-			Values: []string{"improving", "stable", "declining"},
+			Name:      "emotional_trend",
+			Values:    []string{"improving", "stable", "declining"},
 			MaxSelect: 1,
 		})
 
@@ -90,8 +95,10 @@ func init() {
 
 		// Related journal entries (many-to-many relation)
 		growthAnalysis.Fields.Add(&core.RelationField{
-			Name:     "related_entries",
-			MaxSelect: 100, // Support weekly/monthly analyses
+			Name:          "related_entries",
+			CollectionId:  entries.Id,
+			MaxSelect:     100, // Support weekly/monthly analyses
+			CascadeDelete: false,
 		})
 
 		// Add indexes for efficient queries

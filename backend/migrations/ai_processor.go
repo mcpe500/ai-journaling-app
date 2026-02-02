@@ -92,11 +92,9 @@ func processPendingJobs(app core.App) {
 	jobs, err := app.FindRecordsByFilter(
 		"ai_processing_queue",
 		"status = {:status}",
-		"",
 		"-priority,scheduled_at",
 		10, // Process up to 10 jobs at a time
 		0,
-		nil,
 		map[string]any{"status": "pending"},
 	)
 
@@ -121,8 +119,8 @@ func processPendingJobs(app core.App) {
 // processJob processes a single AI job
 func processJob(app core.App, job *core.Record) error {
 	// Check if scheduled time has arrived
-	scheduledAt, ok := job.DateTime("scheduled_at", time.UTC)
-	if !ok {
+	scheduledAt := job.GetDateTime("scheduled_at").Time()
+	if scheduledAt.IsZero() {
 		return markJobFailed(app, job, "Invalid scheduled_at time")
 	}
 
@@ -132,7 +130,7 @@ func processJob(app core.App, job *core.Record) error {
 	}
 
 	// Get estimated tokens
-	estimatedTokens := float64(job.GetInt64Value("estimated_tokens"))
+	estimatedTokens := float64(job.GetInt("estimated_tokens"))
 	if estimatedTokens == 0 {
 		estimatedTokens = 1000 // Default estimate
 	}
@@ -151,7 +149,7 @@ func processJob(app core.App, job *core.Record) error {
 	}
 
 	// Process based on job type
-	jobType := job.GetStringValue("job_type")
+	jobType := job.GetString("job_type")
 	var err error
 
 	switch jobType {
@@ -173,7 +171,7 @@ func processJob(app core.App, job *core.Record) error {
 
 	if err != nil {
 		// Increment attempt count
-		attempts := job.GetInt64Value("attempts")
+		attempts := job.GetInt("attempts")
 		job.Set("attempts", attempts+1)
 
 		// Max retries: 3

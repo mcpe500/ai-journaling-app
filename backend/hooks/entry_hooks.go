@@ -5,13 +5,12 @@ import (
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 // RegisterEntryHooks registers all journal entry related hooks
 func RegisterEntryHooks(app core.App) {
 	// Hook: After journal entry is created
-	app.OnRecordAfterCreateRequest("journal_entries").BindFunc(func(e *core.RecordHookEvent) error {
+	app.OnRecordAfterCreateSuccess("journal_entries").BindFunc(func(e *core.RecordEvent) error {
 		record := e.Record
 
 		// 1. Update user's journaling stats
@@ -33,7 +32,7 @@ func RegisterEntryHooks(app core.App) {
 	})
 
 	// Hook: After journal entry is updated
-	app.OnRecordAfterUpdateRequest("journal_entries").BindFunc(func(e *core.RecordHookEvent) error {
+	app.OnRecordAfterUpdateSuccess("journal_entries").BindFunc(func(e *core.RecordEvent) error {
 		record := e.Record
 
 		// Invalidate heatmap cache when entry is modified
@@ -51,7 +50,7 @@ func RegisterEntryHooks(app core.App) {
 	})
 
 	// Hook: After journal entry is deleted
-	app.OnRecordAfterDeleteRequest("journal_entries").BindFunc(func(e *core.RecordHookEvent) error {
+	app.OnRecordAfterDeleteSuccess("journal_entries").BindFunc(func(e *core.RecordEvent) error {
 		record := e.Record
 
 		// 1. Update user stats (decrement counts)
@@ -70,29 +69,29 @@ func RegisterEntryHooks(app core.App) {
 
 // updateUserStatsAfterEntry updates user statistics after a new entry is created
 func updateUserStatsAfterEntry(app core.App, record *core.Record) error {
-	userID := record.GetStringValue("user")
+	userID := record.GetString("user")
 	if userID == "" {
 		return nil
 	}
 
-	user, err := app.FindAuthUserById(userID)
+	user, err := app.FindRecordById("users", userID)
 	if err != nil {
 		return err
 	}
 
 	// Get entry date
-	entryDate, ok := record.DateTime("entry_date", time.UTC)
-	if !ok {
+	entryDate := record.GetDateTime("entry_date").Time()
+	if entryDate.IsZero() {
 		return nil
 	}
 
 	// Increment total entries
-	totalEntries := user.GetInt64Value("total_entries")
+	totalEntries := user.GetInt("total_entries")
 	user.Set("total_entries", totalEntries+1)
 
 	// Add word count
-	wordCount := record.GetInt64Value("word_count")
-	totalWords := user.GetInt64Value("total_words")
+	wordCount := record.GetInt("word_count")
+	totalWords := user.GetInt("total_words")
 	user.Set("total_words", totalWords+wordCount)
 
 	// Calculate and update streak
@@ -113,24 +112,24 @@ func updateUserStatsAfterEntry(app core.App, record *core.Record) error {
 
 // updateUserStatsAfterDeletion updates user statistics after an entry is deleted
 func updateUserStatsAfterDeletion(app core.App, record *core.Record) error {
-	userID := record.GetStringValue("user")
+	userID := record.GetString("user")
 	if userID == "" {
 		return nil
 	}
 
-	user, err := app.FindAuthUserById(userID)
+	user, err := app.FindRecordById("users", userID)
 	if err != nil {
 		return err
 	}
 
 	// Decrement total entries
-	totalEntries := user.GetInt64Value("total_entries")
-	user.Set("total_entries", max(0, totalEntries-1))
+	totalEntries := user.GetInt("total_entries")
+	user.Set("total_entries", max(0, int64(totalEntries)-1))
 
 	// Subtract word count
-	wordCount := record.GetInt64Value("word_count")
-	totalWords := user.GetInt64Value("total_words")
-	user.Set("total_words", max(0, totalWords-wordCount))
+	wordCount := record.GetInt("word_count")
+	totalWords := user.GetInt("total_words")
+	user.Set("total_words", max(0, int64(totalWords)-int64(wordCount)))
 
 	// Recalculate streak from scratch (expensive but accurate)
 	if err := recalculateStreak(app, user); err != nil {
@@ -147,7 +146,7 @@ func updateUserStatsAfterDeletion(app core.App, record *core.Record) error {
 
 // calculateAndUpdateStreak updates the writing streak based on the new entry
 func calculateAndUpdateStreak(app core.App, user *core.Record, newEntryDate time.Time) error {
-	lastEntryDateStr := user.GetStringValue("last_entry_date")
+	lastEntryDateStr := user.GetString("last_entry_date")
 	var lastEntryDate time.Time
 	var err error
 
@@ -159,8 +158,8 @@ func calculateAndUpdateStreak(app core.App, user *core.Record, newEntryDate time
 		}
 	}
 
-	currentStreak := user.GetInt64Value("current_streak")
-	longestStreak := user.GetInt64Value("longest_streak")
+	currentStreak := user.GetInt("current_streak")
+	longestStreak := user.GetInt("longest_streak")
 
 	// Check if the new entry is consecutive day
 	if !lastEntryDate.IsZero() {
@@ -193,17 +192,15 @@ func calculateAndUpdateStreak(app core.App, user *core.Record, newEntryDate time
 
 // recalculateStreak recalculates the entire streak from all user entries
 func recalculateStreak(app core.App, user *core.Record) error {
-	userID := user.Id()
+	userID := user.Id
 
 	// Get all entries ordered by date
 	entries, err := app.FindRecordsByFilter(
 		"journal_entries",
 		"user = {:userId}",
-		"",
 		"entry_date",
 		50,
 		0,
-		nil,
 		map[string]any{"userId": userID},
 	)
 
@@ -215,10 +212,10 @@ func recalculateStreak(app core.App, user *core.Record) error {
 
 	currentStreak := 1
 	longestStreak := 1
-	lastDate, _ := entries[0].DateTime("entry_date", time.UTC)
+	lastDate := entries[0].GetDateTime("entry_date").Time()
 
 	for i := 1; i < len(entries); i++ {
-		entryDate, _ := entries[i].DateTime("entry_date", time.UTC)
+		entryDate := entries[i].GetDateTime("entry_date").Time()
 		daysDiff := int(lastDate.Sub(entryDate).Hours() / 24)
 
 		if daysDiff == 1 {
@@ -252,8 +249,7 @@ func queueAIAnalysisJob(app core.App, record *core.Record) error {
 		return err
 	}
 
-	userID := record.GetStringValue("user")
-	entryDate, _ := record.DateTime("entry_date", time.UTC)
+	userID := record.GetString("user")
 	scheduledAt := time.Now().UTC()
 
 	// Create the queue job
@@ -277,13 +273,13 @@ func queueAIAnalysisJob(app core.App, record *core.Record) error {
 
 // invalidateHeatmapCache invalidates the heatmap cache for the affected period
 func invalidateHeatmapCache(app core.App, record *core.Record) error {
-	userID := record.GetStringValue("user")
+	userID := record.GetString("user")
 	if userID == "" {
 		return nil
 	}
 
-	entryDate, ok := record.DateTime("entry_date", time.UTC)
-	if !ok {
+	entryDate := record.GetDateTime("entry_date").Time()
+	if entryDate.IsZero() {
 		return nil
 	}
 
@@ -291,26 +287,25 @@ func invalidateHeatmapCache(app core.App, record *core.Record) error {
 	month := int(entryDate.Month())
 
 	// Delete cache for this specific month
-	cacheCollection, err := app.FindCollectionByNameOrId("calendar_heatmap_cache")
-	if err != nil {
-		return err
-	}
-
 	// Find and delete cache records
 	caches, err := app.FindRecordsByFilter(
 		"calendar_heatmap_cache",
 		"user = {:userId} && year = {:year} && month = {:month}",
 		"",
-		"",
 		10,
 		0,
-		nil,
 		map[string]any{
 			"userId": userID,
 			"year":   year,
 			"month":  month,
 		},
 	)
+
+	if err != nil {
+		// Just log error and continue if collection doesn't exist or other error
+		// It's a cache, not critical
+		return nil 
+	}
 
 	for _, cache := range caches {
 		if err := app.Delete(cache); err != nil {

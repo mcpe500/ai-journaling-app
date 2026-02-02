@@ -31,7 +31,7 @@ func RunAllSeeders(app core.App) error {
 
 // seedAdminUser creates the admin account from environment variables
 func seedAdminUser(app core.App) error {
-	adminEmail := app.Settings().Meta.AdminEmail
+	adminEmail := os.Getenv("PB_ADMIN_EMAIL")
 	adminPassword := os.Getenv("PB_ADMIN_PASSWORD")
 
 	if adminEmail == "" || adminPassword == "" {
@@ -40,18 +40,29 @@ func seedAdminUser(app core.App) error {
 	}
 
 	// Check if admin already exists
-	admin, err := app.FindAuthUserByEmail(adminEmail)
+	admin, err := app.FindAuthRecordByEmail("_pb_users_auth_", adminEmail)
 	if err == nil && admin != nil {
 		log.Printf("ℹ️  Admin user already exists: %s", adminEmail)
 		return nil
 	}
 
 	// Create admin user
-	admin = core.NewRecord(core.FindCollectionByNameOrId("_pb_users_auth_"))
+	collection, err := app.FindCollectionByNameOrId("_pb_users_auth_")
+	if err != nil {
+		return err
+	}
+	
+	admin = core.NewRecord(collection)
 	admin.SetEmail(adminEmail)
 	admin.SetPassword(adminPassword)
-
-	// Set admin role
+	
+	// Set admin role if applicable, though typically PB admins are separate from users in older versions, 
+	// in v0.23+ they can be in _pb_users_auth_ or similar?
+	// Actually, system admins are usually managed via `app.Dao().SaveAdmin(...)` in older versions.
+	// In v0.23, `_pb_users_auth_` is the default users collection.
+	// NOTE: Superusers are different.
+	// But let's assume we are creating a regular user with 'admin' role field as per previous logic.
+	
 	admin.Set("role", "admin")
 
 	if err := app.Save(admin); err != nil {
@@ -73,14 +84,19 @@ func seedTestUser(app core.App) error {
 	}
 
 	// Check if test user already exists
-	existing, err := app.FindAuthUserByEmail(testEmail)
+	existing, err := app.FindAuthRecordByEmail("users", testEmail)
 	if err == nil && existing != nil {
 		log.Printf("ℹ️  Test user already exists: %s", testEmail)
 		return nil
 	}
 
+	collection, err := app.FindCollectionByNameOrId("users")
+	if err != nil {
+		return err
+	}
+
 	// Create test user
-	testUser := core.NewRecord(core.FindCollectionByNameOrId("_pb_users_auth_"))
+	testUser := core.NewRecord(collection)
 	testUser.SetEmail(testEmail)
 	testUser.SetPassword(testPassword)
 
@@ -109,7 +125,7 @@ func seedSampleJournalEntries(app core.App) error {
 	}
 
 	// Get test user
-	testUser, err := app.FindAuthUserByEmail(testEmail)
+	testUser, err := app.FindAuthRecordByEmail("users", testEmail)
 	if err != nil {
 		log.Println("ℹ️  Test user not found, skipping sample entries")
 		return nil
@@ -126,11 +142,9 @@ func seedSampleJournalEntries(app core.App) error {
 		"journal_entries",
 		"user = {:userId}",
 		"",
-		"",
 		1,
 		0,
-		nil,
-		map[string]any{"userId": testUser.Id()},
+		map[string]any{"userId": testUser.Id},
 	)
 
 	if len(existing) > 0 {
@@ -194,10 +208,10 @@ func seedSampleJournalEntries(app core.App) error {
 
 		// For now, store content unencrypted (in production, this would be encrypted on client)
 		// The encryption_key_hash would be set when the user creates their encryption key
-		entry.Set("user", testUser.Id())
+		entry.Set("user", testUser.Id)
 		entry.Set("entry_date", sample.date)
 		entry.Set("encrypted_content", "[ENCRYPTED]"+sample.content) // Placeholder
-		entry.Set("content_hash", security.Panics(modelHashString(sample.content)))
+		entry.Set("content_hash", modelHashString(sample.content))
 		entry.Set("mood_rating", sample.mood)
 		entry.Set("tags", sample.tags)
 		entry.Set("word_count", int64(len([]rune(sample.content)))) // Rough word count

@@ -3,7 +3,6 @@ package migrations
 import (
 	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 func init() {
@@ -71,14 +70,12 @@ func init() {
 		aiQueue.Fields.Add(&core.NumberField{
 			Name:     "priority",
 			Required: true,
-			Default:  5,
 		})
 
 		// Retry count
 		aiQueue.Fields.Add(&core.NumberField{
 			Name:     "attempts",
 			Required: true,
-			Default:  0,
 		})
 
 		// Error message (on failure)

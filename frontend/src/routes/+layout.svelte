@@ -1,10 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import type { Snippet } from 'svelte';
 	import { authStore, themeStore } from '$lib/stores';
 	import { pb } from '$lib/pocketbase';
 
+	let { children }: { children: Snippet } = $props();
+
 	// Theme classes
 	const darkThemeClass = 'dark';
+
+	// Reactive state for authentication (Svelte 5 runes mode)
+	let isAuthenticated = $state(false);
 
 	onMount(() => {
 		// Initialize auth store
@@ -26,15 +32,28 @@
 		}
 	});
 
-	// Apply theme to document
-	$: if (typeof document !== 'undefined') {
-		const html = document.documentElement;
-		if ($themeStore === 'dark') {
-			html.classList.add(darkThemeClass);
-		} else {
-			html.classList.remove(darkThemeClass);
+	// Sync auth state with store
+	$effect(() => {
+		const unsubscribe = authStore.subscribe((auth) => {
+			isAuthenticated = auth.isValid;
+		});
+		return unsubscribe;
+	});
+
+	// Apply theme to document using $effect for Svelte 5
+	$effect(() => {
+		if (typeof document !== 'undefined') {
+			const html = document.documentElement;
+			const unsubscribe = themeStore.subscribe((theme) => {
+				if (theme === 'dark') {
+					html.classList.add(darkThemeClass);
+				} else {
+					html.classList.remove(darkThemeClass);
+				}
+			});
+			return unsubscribe;
 		}
-	}
+	});
 </script>
 
 <svelte:head>
@@ -44,7 +63,7 @@
 	<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
 </svelte:head>
 
-{% if isAuthenticated() %}
+{#if isAuthenticated}
 	<nav class="bg-white dark:bg-gray-900 shadow-md">
 		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 			<div class="flex justify-between h-16">
@@ -66,7 +85,7 @@
 			</div>
 		</div>
 	</nav>
-{% end if}
+{/if}
 
 <main class="min-h-screen bg-gray-50 dark:bg-gray-900">
 	{@render children()}

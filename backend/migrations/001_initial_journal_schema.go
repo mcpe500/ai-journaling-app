@@ -103,13 +103,11 @@ func init() {
 
 		// Whether entry has been processed by AI
 		entries.Fields.Add(&core.BoolField{
-			Name:    "ai_processed",
-			Default: false,
+			Name: "ai_processed",
 		})
 
 		// Add indexes
 		entries.AddIndex("idx_entries_user_date", false, "user,entry_date", "")
-		entries.AddIndex("idx_entries_user_created", false, "user,created", "")
 		entries.AddIndex("idx_entries_entry_date", false, "entry_date", "")
 
 		if err := app.Save(entries); err != nil {
