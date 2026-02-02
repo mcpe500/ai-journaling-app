@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-journal-backend:latest
+    container_name: ai-journal-backend
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./pb_data:/app/pb_data
+    environment:
+      # Server Configuration
+      - PB_AUTOMIGRATE=true
+      - PB_HTTP=0.0.0.0:8090
+      - PB_LOG_LEVEL=info
+      - PB_CORS_ENABLED=true
+      - PB_CORS_ORIGINS=*
+      
+      # Admin Account
+      - PB_ADMIN_EMAIL=${PB_ADMIN_EMAIL:-admin@aijournal.app}
+      - PB_ADMIN_PASSWORD=${PB_ADMIN_PASSWORD:-admin123456}
+      
+      # Test User
+      - PB_TEST_USER_EMAIL=${PB_TEST_USER_EMAIL:-test@aijournal.app}
+      - PB_TEST_USER_PASSWORD=${PB_TEST_USER_PASSWORD:-test123456}
+      
+      # Seeder Configuration
+      - PB_RUN_SEEDERS=${PB_RUN_SEEDERS:-false}
+      
+      # AI Queue Configuration
+      - ENABLE_AI_QUEUE=${ENABLE_AI_QUEUE:-false}
+      - QUEUE_PROCESS_INTERVAL=${QUEUE_PROCESS_INTERVAL:-5}
+      
+      # AI Studio Configuration
+      - AI_STUDIO_API_KEY=${AI_STUDIO_API_KEY:-}
+      - AI_STUDIO_MODEL=${AI_STUDIO_MODEL:-gemma-3-27b-it}
+      - AI_RATE_LIMIT_TOKENS=${AI_RATE_LIMIT_TOKENS:-15000}
+      - AI_RATE_LIMIT_WINDOW=${AI_RATE_LIMIT_WINDOW:-60}
