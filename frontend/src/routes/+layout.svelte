@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
+	import { assets } from '$app/paths';
 	import { authStore, themeStore } from '$lib/stores';
 	import { pb } from '$lib/pocketbase';
 
-	let { children }: { children: Snippet } = $props();
-
 	// Theme classes
 	const darkThemeClass = 'dark';
+
+	// Layout children snippet (Svelte 5 runes mode)
+	let { children }: { children: Snippet } = $props();
 
 	// Reactive state for authentication (Svelte 5 runes mode)
 	let isAuthenticated = $state(false);
@@ -32,26 +34,26 @@
 		}
 	});
 
-	// Sync auth state with store
+	// Sync auth state with store using $effect for Svelte 5
 	$effect(() => {
 		const unsubscribe = authStore.subscribe((auth) => {
 			isAuthenticated = auth.isValid;
 		});
-		return unsubscribe;
+		return () => {
+			unsubscribe();
+		};
 	});
 
 	// Apply theme to document using $effect for Svelte 5
 	$effect(() => {
 		if (typeof document !== 'undefined') {
 			const html = document.documentElement;
-			const unsubscribe = themeStore.subscribe((theme) => {
-				if (theme === 'dark') {
-					html.classList.add(darkThemeClass);
-				} else {
-					html.classList.remove(darkThemeClass);
-				}
-			});
-			return unsubscribe;
+			const currentTheme = $themeStore;
+			if (currentTheme === 'dark') {
+				html.classList.add(darkThemeClass);
+			} else {
+				html.classList.remove(darkThemeClass);
+			}
 		}
 	});
 </script>
@@ -60,7 +62,7 @@
 	<title>AI Journal</title>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
+	<link rel="icon" href="{assets}/favicon.svg" />
 </svelte:head>
 
 {#if isAuthenticated}
@@ -76,7 +78,7 @@
 					<a href="/calendar" class="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Calendar</a>
 					<a href="/growth" class="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Growth</a>
 					<button
-						onclick={() => pb.authStore.clear()}
+						on:click={() => pb.authStore.clear()}
 						class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
 					>
 						Logout
